@@ -5,7 +5,8 @@ from urllib.parse import quote
 from bs4 import BeautifulSoup
 import re, time, random, pymysql, datetime
 import http.cookiejar
-import logging,random,time
+import logging, time, operator
+from functools import reduce
 
 logging.basicConfig(
 	level = logging.INFO,
@@ -52,7 +53,7 @@ def get_level_1(url=None):
 
 #爬取一级类别-播客类型，返回二维列表
 def fetch_level_1(cur, start=0, end=1):
-	cur.execute("select * from fm_lizhi_list where status = '0' limit " + str(start) + ',' + str(end))
+	cur.execute("select * from fm_lizhi_list where status = '2' limit " + str(start) + ',' + str(end))
 	return cur.fetchall()
 
 #更新一级类别-播客类型的爬取状态（'0':未爬取，'1':已爬取，'2'：爬取中）
@@ -76,15 +77,30 @@ def get_level_2(cur, url, page_num):
 	return bool_next_page,radio_detail
 
 def check_level_2(cur, data_lists):
-	pass
+	ids = []
+	for data_list in data_lists:
+		ids.append(data_list[1])
+	ids_var = "','".join(ids)
+	sql = "select radioCover_url from fm_lizhi_radios where radioCover_url in('" + ids_var + "')"
+	cur.execute(sql)
+	fetch = cur.fetchall()
+	exsist_ids = reduce(operator.add, fetch) if fetch else fetch
+	len_exsist_ids = str(len(exsist_ids)) if exsist_ids else str(0)
+	logging.info(str(exsist_ids) + ' is exsist! length is ' + len_exsist_ids)
+	return exsist_ids
 
 #存储二级类别-播客基本信息
 def store_level_2(cur, level_id, page_num, data_lists):
 	logging.info('level_id: ' + str(level_id) + ', page_num: ' + str(page_num))
+	exsist_ids = check_level_2(cur, data_lists)
 	for data_list in data_lists:
-		#val = "','".join(data_list)
-		sql = "insert into fm_lizhi_radios(level_id,radioCover,radioCover_url,radioName,radioName_url,radioAuthor,radioAuthor_url,page_num,dt) values('" + str(level_id) + "',%s,%s,%s,%s,%s,%s,%s,%s)"
-		cur.execute(sql,(data_list[0],data_list[1],data_list[2],data_list[3],data_list[4],data_list[5],page_num,datetime.datetime.now()))
+		if data_list[1] in exsist_ids:
+			#logging.info(data_list[1] + ' is exsist!')
+			continue
+		else:
+			#logging.info(data_list[1] + ' is storing!')
+			sql = "insert into fm_lizhi_radios(level_id,radioCover,radioCover_url,radioName,radioName_url,radioAuthor,radioAuthor_url,page_num,dt) values('" + str(level_id) + "',%s,%s,%s,%s,%s,%s,%s,%s)"
+			cur.execute(sql,(data_list[0],data_list[1],data_list[2],data_list[3],data_list[4],data_list[5],page_num,datetime.datetime.now()))
 	cur.connection.commit()
 
 
@@ -139,7 +155,8 @@ create table spider.fm_lizhi_list
   primary key(id)
 )
 
-
+20170622:19306
+20170625:41504
 create table spider.fm_lizhi_radios
 (
 	`id` int(11) NOT NULL AUTO_INCREMENT,
